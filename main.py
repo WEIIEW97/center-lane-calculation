@@ -1,6 +1,6 @@
 import cv2
 import os
-os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
+# os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 from skimage.morphology import skeletonize
 import matplotlib.pyplot as plt
 import os
@@ -10,40 +10,63 @@ from scipy import optimize
 from scipy.interpolate import interp1d
 import glob
 import re
-from typing import List
+from typing import List, Tuple
 
 
-rootdir = "/home/william/extdisk/Data/cybathlon/cppresult/"
-img_path = "000127_mask.jpg" # 145 or 127
-index = img_path[:6]
-path_seg  = cv2.imread(os.path.join(rootdir, img_path))
-path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
+# rootdir = "/home/william/extdisk/Data/cybathlon/cppresult/"
+# img_path = "000127_mask.jpg" # 145 or 127
+# index = img_path[:6]
+# path_seg  = cv2.imread(os.path.join(rootdir, img_path))
 # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
-gx_right_shift = path_seg[:, 1:] - path_seg[:, :-1]
-gx_left_shift = path_seg[:, :-1] - path_seg[:, 1:]
-gy_down_shift = path_seg[1:, :] - path_seg[:-1, :]
-gy_up_shift = path_seg[:-1, :] - path_seg[1:, :]
+# # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
+# gx_right_shift = path_seg[:, 1:] - path_seg[:, :-1]
+# gx_left_shift = path_seg[:, :-1] - path_seg[:, 1:]
+# gy_down_shift = path_seg[1:, :] - path_seg[:-1, :]
+# gy_up_shift = path_seg[:-1, :] - path_seg[1:, :]
 
-gx = cv2.bitwise_or(gx_left_shift, gx_right_shift)
-gy = cv2.bitwise_or(gy_up_shift, gy_down_shift)
+# gx = cv2.bitwise_or(gx_left_shift, gx_right_shift)
+# gy = cv2.bitwise_or(gy_up_shift, gy_down_shift)
 
-grads = cv2.bitwise_or(gx[1:, :], gy[:, 1:])
+# grads = cv2.bitwise_or(gx[1:, :], gy[:, 1:])
 
-kernel_size = 3
-kernel = np.ones((kernel_size, kernel_size), np.uint8)
-grads_erode = cv2.erode(grads, kernel, iterations=1)
+# kernel_size = 3
+# kernel = np.ones((kernel_size, kernel_size), np.uint8)
+# grads_erode = cv2.erode(grads, kernel, iterations=1)
 
-if (len(grads_erode.shape)) == 3:
-    H, W, _ = grads_erode.shape
-else:
-    H, W = grads_erode.shape
+# if (len(grads_erode.shape)) == 3:
+#     H, W, _ = grads_erode.shape
+# else:
+#     H, W = grads_erode.shape
 
 
-thr = 250
-valid_points = np.where(grads_erode[:,:,0] > thr)
-coordinates = list(zip(valid_points[0], valid_points[1]))
+# thr = 250
+# valid_points = np.where(grads_erode[:,:,0] > thr)
+# coordinates = list(zip(valid_points[0], valid_points[1]))
 
 # print("tan(1) = ", np.tan(np.deg2rad(1)))
+
+def gaussian_blur(img, kernel_size=[3, 3]):
+    return cv2.GaussianBlur(img, kernel_size, cv2.BORDER_DEFAULT)
+
+def extract_boundary_line(binary_mask, thr=250):
+    gx_right_shift = binary_mask[:, 1:] - binary_mask[:, :-1]
+    gx_left_shift = binary_mask[:, :-1] - binary_mask[:, 1:]
+    gy_down_shift = binary_mask[1:, :] - binary_mask[:-1, :]
+    gy_up_shift = binary_mask[:-1, :] - binary_mask[1:, :]
+
+    # make gx and gy wider
+    gx = cv2.bitwise_or(gx_left_shift, gx_right_shift)
+    gy = cv2.bitwise_or(gy_up_shift, gy_down_shift)
+
+    grads = cv2.bitwise_or(gx[1:, :], gy[:, 1:])
+
+    kernel_size = 3
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    # only erodes once to avoid too much erosion
+    grads_erode = cv2.erode(grads, kernel, iterations=1)
+    valid_points = np.where(grads_erode[:,:,0] > thr)
+    coordinates = list(zip(valid_points[0], valid_points[1]))
+    return coordinates
 
 def get_filenames(rootdir:str, specifier:str):
     conditional_filenames = glob.glob(rootdir + f"*{specifier}*")
@@ -75,16 +98,16 @@ def y_coord_restore(h:int, transformed_coordinates:np.array):
     coord_restore[:, 0] = -coord_restore[:, 0] + h
     return coord_restore
 
-def diffusion_method(coordinates:List[np.array], delta_theta=1, begin_angle=0, end_angle=90):
+def diffusion_method(coordinates:List[np.array], h, w, delta_theta=1, begin_angle=0, end_angle=90):
     """this is a classification problem, which aims to classify
     the point is whether at left boundary or right. Therefore we
     construct a vector y=kx (k iterates by delta theta) to find the 
     first intersection and the last along the ray. (this method demands
     a really dense point distribution, in order to avoid missing the point)
     """
-    transformed_coords = y_coord_transform(H, coordinates)
+    transformed_coords = y_coord_transform(h, coordinates)
     for angle in range(begin_angle, end_angle+1):
-        for j in range(W):
+        for j in range(w):
             pass
 
 
@@ -172,6 +195,27 @@ def find_middle_lane_colwise(mask):
     return middle_lane
 
 
+def radius_check(coordinates, central_point):
+    map_coord = construct_map(coordinates)
+    left_sparse_boundary_points = []
+    right_sparse_boundary_points = []
+    for key in map_coord.keys():
+        horizontal_line_points = map_coord[key]
+        min_x_point = np.min(horizontal_line_points)
+        max_x_point = np.max(horizontal_line_points)
+
+        r1 = l2_norm(np.array(central_point), np.array([key, min_x_point]))
+        r2 = l2_norm(np.array(central_point), np.array([key, max_x_point]))
+        
+        if r1 < r2:
+            left_sparse_boundary_points.append((key, min_x_point))
+            right_sparse_boundary_points.append((key, max_x_point))
+        else:
+            left_sparse_boundary_points.append((key, max_x_point))
+            right_sparse_boundary_points.append((key, min_x_point))
+    return left_sparse_boundary_points, right_sparse_boundary_points
+
+
 # cur_idx = 0
 # grads_erode = grads_erode[:, :, 0]
 # for i in range(H):
@@ -234,7 +278,6 @@ def find_middle_lane_dbscan(binary_mask, eps=2, min_samples=2):
     return middle_lane
 
 
-
 def fit_polynomials_scalar(x, coef):
     degrees = len(coef)
     res = 0
@@ -253,6 +296,11 @@ def cost_func(domain, target_coeffs, f_coeffs, g_coeffs):
     return np.sum((target - f)**2 + (target - g)**2)
 
 def rotation_method(path_seg:np.array):
+    if len(path_seg.shape) == 3:
+        h, w, _ = path_seg.shape
+    else:
+        h, w = path_seg.shape
+
     middle_lane = find_middle_lane_rowwise(path_seg)
     middle_lane_coords = []
     for i in range(len(middle_lane)):
@@ -267,7 +315,7 @@ def rotation_method(path_seg:np.array):
     middle_lane_coords = np.array(middle_lane_coords)
     func_middle_lane_coef = np.polyfit(middle_lane_coords[:, 1], middle_lane_coords[:, 0], 5)
 
-    for x in range(W):
+    for x in range(w):
         y = int(fit_polynomials_scalar(x, func_middle_lane_coef))
         cv2.circle(seg_copy, (x, y), 1, (0, 0, 255), 2)
 
@@ -282,7 +330,7 @@ def rotation_method(path_seg:np.array):
     middle_lane_coords_t = np.array(middle_lane_coords_t)
     # middle_lane_coords_t_restore = np.array([[0, -1], [1, 0]]) @ middle_lane_coords_t.T + np.array([[W], [0]])
     middle_lane_coords_t_restore = np.copy(middle_lane_coords_t)
-    middle_lane_coords_t_restore[:, 1] = W - middle_lane_coords_t[:, 0]
+    middle_lane_coords_t_restore[:, 1] = w - middle_lane_coords_t[:, 0]
     middle_lane_coords_t_restore[:, 0] = middle_lane_coords_t[:, 1]
 
     # for y, x in middle_lane_coords_t:
@@ -298,7 +346,7 @@ def rotation_method(path_seg:np.array):
     # func_middle_lane_t_coef = np.polyfit(middle_lane_coords_t_restore[:, 1], middle_lane_coords_t_restore[:, 0], 3)
     func_middle_lane_t_coef = np.polyfit(middle_lane_coords_t_restore[:, 1], middle_lane_coords_t_restore[:, 0], 5)
 
-    for x in range(W):
+    for x in range(w):
         y = int(fit_polynomials_scalar(x, func_middle_lane_t_coef))
         cv2.circle(seg_copy, (x, y), 1, (128, 128, 128), 2)
 
@@ -346,21 +394,36 @@ if __name__ == "__main__":
     # for y, x in optimized_middle_lane:
     #     cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
     # show_pic(seg_copy)
-    all_filenames = get_filenames(rootdir, "mask")
-    sourcedir = "/home/william/extdisk/Data/cybathlon" 
-    outdir = os.path.join(sourcedir, "debug_middle_path")
-    os.makedirs(outdir, exist_ok=True)
-    for path in all_filenames:
-        path_seg = cv2.imread(path)
-        path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
-        optimized_middle_lane = calculate_middle_lane(path_seg, coordinates)
-        seg_copy = np.copy(path_seg)
-        for y, x in optimized_middle_lane:
-            cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
-        match = re.search(r'(\d+)_mask\.jpg', path)
-        cv2.imwrite(os.path.join(outdir, f"{match.group(1)}_center_line.jpg"), seg_copy[:,:,::-1])
+
+    # all_filenames = get_filenames(rootdir, "mask")
+    # sourcedir = "/home/william/extdisk/Data/cybathlon" 
+    # outdir = os.path.join(sourcedir, "debug_middle_path")
+    # os.makedirs(outdir, exist_ok=True)
+    # for path in all_filenames:
+    #     path_seg = cv2.imread(path)
+    #     path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
+    #     optimized_middle_lane = calculate_middle_lane(path_seg, coordinates)
+    #     seg_copy = np.copy(path_seg)
+    #     for y, x in optimized_middle_lane:
+    #         cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
+    #     match = re.search(r'(\d+)_mask\.jpg', path)
+    #     cv2.imwrite(os.path.join(outdir, f"{match.group(1)}_center_line.jpg"), seg_copy[:,:,::-1])
     
-    print("done!")
+    # print("done!")
+
+    img_path = "000127_mask.jpg"
+    path_seg = cv2.imread(img_path)
+    h = path_seg.shape[0]
+    w = path_seg.shape[1]
+    coords = extract_boundary_line(path_seg)
+    left_coords, right_coords = radius_check(coordinates=coords, central_point=(h, 0))
+    blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
+    # for coord in left_coords:
+    #     blank_paint[coord[0], coord[1]] = 255
+    for coord in right_coords:
+        blank_paint[coord[0], coord[1]] = 255
+
+    show_pic(blank_paint)
 
         
     import gc
