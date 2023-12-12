@@ -174,7 +174,12 @@ def find_middle_lane_rowwise(mask):
         if white_pixels.size > 0:
             middle_lane[i] = np.mean(white_pixels).astype(np.int32)
     
-    return middle_lane
+    middle_lane_coords = []
+    for i in range(len(middle_lane)):
+        if middle_lane[i] != 0:
+            middle_lane_coords.append((i, middle_lane[i]))
+
+    return middle_lane_coords
 
 
 def calculate_middle_lane(mask, coordinates, tolerance=10):
@@ -199,8 +204,13 @@ def find_middle_lane_colwise(mask):
         white_pixels = np.where(col == 255)[0]
         if white_pixels.size > 0:
             middle_lane[i] = np.mean(white_pixels).astype(np.int32)
+
+    middle_lane_coords = []
+    for j in range(len(middle_lane)):
+        if middle_lane[j] != 0:
+            middle_lane_coords.append((middle_lane[i], j))
     
-    return middle_lane
+    return middle_lane_coords
 
 
 def radius_check(coordinates, central_point):
@@ -393,7 +403,7 @@ def rotation_method(path_seg:np.array):
 
     return seg_copy
 
-def thining_method(binary_mask, method="guo"):
+def thining_method(binary_mask, method="zhang"):
     if len(binary_mask.shape) == 3:
         binary_mask = binary_mask[:,:,0]
     if method == "guo":
@@ -443,15 +453,17 @@ if __name__ == "__main__":
 
 
 
-    img_path = "data/000145_mask.jpg"
+    img_path = "output/sam_footpath_1702370792.414842.jpg"
     path_seg = cv2.imread(img_path)
     seg_copy = np.copy(path_seg)
     h = path_seg.shape[0]
     w = path_seg.shape[1]
     # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
 
-    skull = calculate_medial_axis(path_seg[:,:,0])
-    show_pic(skull)
+    skeleton_coords = find_middle_lane_rowwise(path_seg[:,:,0])
+    for y, x in skeleton_coords:
+        cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
+    show_pic(seg_copy)
     import gc
     gc.collect()
 
