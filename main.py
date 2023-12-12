@@ -3,7 +3,8 @@ import os
 import sys
 if sys.platform == "linux":
     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
-from skimage.morphology import skeletonize
+from skimage.morphology import skeletonize, medial_axis
+from skimage.measure import find_contours
 import matplotlib.pyplot as plt
 import os
 import numpy as np
@@ -74,9 +75,14 @@ def get_filenames(rootdir:str, specifier:str):
     conditional_filenames = glob.glob(rootdir + f"*{specifier}*")
     return conditional_filenames
 
-def make_skeleton(binary_image):
+def make_skeleton(binary_image, level=0.8):
     skeleton = skeletonize(binary_image, method="lee")
-    return skeleton
+    c = find_contours(skeleton, level=level)
+    return c
+
+def calculate_medial_axis(binary_image, return_distance=False):
+    results = medial_axis(binary_image, return_distance=return_distance)
+    return results
 
 def l2_norm(a, b):
     return np.linalg.norm(a-b)
@@ -387,84 +393,65 @@ def rotation_method(path_seg:np.array):
 
     return seg_copy
 
+def thining_method(binary_mask, method="guo"):
+    if len(binary_mask.shape) == 3:
+        binary_mask = binary_mask[:,:,0]
+    if method == "guo":
+        method_ = cv2.ximgproc.THINNING_GUOHALL
+    elif method == "zhang":
+        method_ = cv2.ximgproc.THINNING_ZHANGSUEN
+    else:
+        raise NameError(f"{method} is not implemented. Please choose `guo` | `zhang` instead.")
+
+    skeleton = cv2.ximgproc.thinning(binary_mask, thinningType=method_)
+    c, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_KCOS)
+    points = None
+    if len(c) != 0:
+        points = c[0]
+        points = points.squeeze(1)
+    return points
+
 
 if __name__ == "__main__":
-    # res = rotation_method(path_seg)
-    # show_pic(res)
-    # optimized_middle_lane = calculate_middle_lane(path_seg, coordinates)
-    # seg_copy = np.copy(path_seg)
-    # for y, x in optimized_middle_lane:
-    #     cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
-    # show_pic(seg_copy)
-
     # rootdir = "/home/william/data/cybathlon/cppresult/"
-
 
     # all_filenames = get_filenames(rootdir, "mask")
     # # sourcedir = "/home/william/extdisk/Data/cybathlon" 
     # targetdir = "/home/william/data/cybathlon"
-    # outdir = os.path.join(targetdir, "optimized_method")
+    # outdir = os.path.join(targetdir, "thining_method_zhang_TC89_KCOS")
     # os.makedirs(outdir, exist_ok=True)
     # for path in all_filenames:
     #     path_seg = cv2.imread(path)
     #     path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
-    #     coordinates = extract_boundary_line(path_seg)
-    #     optimized_middle_lane = calculate_middle_lane(path_seg, coordinates)
+    #     # coordinates = extract_boundary_line(path_seg)
+    #     # optimized_middle_lane = calculate_middle_lane(path_seg, coordinates)
+    #     coordinates = thining_method(path_seg, "zhang")
     #     # middle_lane = find_middle_lane_rowwise(path_seg)
     #     # middle_lane_coords = []
     #     # for i in range(len(middle_lane)):
     #     #     if middle_lane[i] != 0:
     #     #         middle_lane_coords.append((i, middle_lane[i]))
-    #     seg_copy = np.copy(path_seg)
-    #     # for y, x in middle_lane_coords:
-    #     for y, x in optimized_middle_lane:
-    #         cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
-    #     match = re.search(r'(\d+)_mask\.jpg', path)
-    #     cv2.imwrite(os.path.join(outdir, f"{match.group(1)}_center_line.jpg"), seg_copy[:,:,::-1])
+    #     if coordinates is not None:
+    #         seg_copy = np.copy(path_seg)
+    #         # for y, x in middle_lane_coords:
+    #         for x, y in coordinates:
+    #             cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
+    #         match = re.search(r'(\d+)_mask\.jpg', path)
+    #         cv2.imwrite(os.path.join(outdir, f"{match.group(1)}_center_line.jpg"), seg_copy[:,:,::-1])
     
-    print("done!")
+    # print("done!")
 
 
 
-    img_path = "000145_mask.jpg"
+    img_path = "data/000145_mask.jpg"
     path_seg = cv2.imread(img_path)
     seg_copy = np.copy(path_seg)
     h = path_seg.shape[0]
     w = path_seg.shape[1]
-    path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
+    # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
 
-    # middle_lane = find_middle_lane_rowwise(path_seg)
-    # middle_lane_coords = []
-    # for i in range(len(middle_lane)):
-    #     if middle_lane[i] != 0:
-    #         middle_lane_coords.append((i, middle_lane[i]))
-    # middle_lane_coords_array = np.array(middle_lane_coords)
-    # func_middle_Lane_coef = np.polyfit(middle_lane_coords_array[:, 1], middle_lane_coords_array[:, 0], 3)
-
-    # for x in range(w):
-    #     y = int(fit_polynomials_scalar(x, func_middle_Lane_coef))
-    #     cv2.circle(seg_copy, (x, y), 1, (0, 0, 255), 2)
-
-    # for (y, x) in middle_lane_coords:
-        # cv2.circle(seg_copy, (x, y), 1, (255, 0, 0), 2)
-    # coords = extract_boundary_line(path_seg)
-    # left_coords, right_coords = radius_check(coordinates=coords, central_point=(h, 0))
-    # blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
-    # for coord in left_coords:
-    #     blank_paint[coord[0], coord[1]] = 255
-    # for coord in right_coords:
-    #     blank_paint[coord[0], coord[1]] = 255
-    skeleton = cv2.ximgproc.thinning(path_seg[:,:,0])
-    c, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-    points = c[0]
-    points = points.squeeze(1)
-    print(points.shape)
-    # show_pic(seg_copy)
-    for x, y in points:
-        cv2.circle(seg_copy, (x, y), 1, (255, 0, 0), 2)
-    
-    show_pic(seg_copy)
-        
+    skull = calculate_medial_axis(path_seg[:,:,0])
+    show_pic(skull)
     import gc
     gc.collect()
 
