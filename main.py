@@ -410,6 +410,28 @@ def sin_cos_composition_fit(x, y):
     params, _ = optimize.curve_fit(sin_cos_composition_func, x_normalized, y, p0=initial_guess)
     return params, x_normalized, x_min, x_max
 
+def classification_by_gradients(binary_mask):
+    h, w = binary_mask.shape
+    left_mark_sparse_coord = []
+    right_mark_sparse_coord = []
+
+    for i in range(h):
+        row = binary_mask[i, :]
+        found_left_edge = False
+        for j in range(1, w):
+            # Detect left edge
+            if not found_left_edge and row[j] > row[j-1]:
+                left_mark_sparse_coord.append((i, j))
+                found_left_edge = True
+            # Detect right edge
+            elif found_left_edge and row[j] < row[j-1]:
+                right_mark_sparse_coord.append((i, j))
+                break  # Optional: remove to find multiple edges per row
+
+    return left_mark_sparse_coord, right_mark_sparse_coord
+
+
+
 if __name__ == "__main__":
     # rootdir = "/home/william/data/cybathlon/cppresult/"
 
@@ -441,39 +463,45 @@ if __name__ == "__main__":
 
 
 
-    img_path = "output/sam_footpath_1702370792.414842.jpg"
-    # img_path = "data/000127_mask.jpg"
+    # img_path = "output/sam_footpath_1702370792.414842.jpg"
+    img_path = "data/000145_mask.jpg"
     path_seg = cv2.imread(img_path)
-    radius = calculate_kernel_radius(path_seg[:,:,0])
-    print(radius)
-    seg_copy = np.copy(path_seg)
-    path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
-
-    skeleton_coords = thinning_method(path_seg[:,:,0])
-    mean, std_dev = mean_std_dev(skeleton_coords)
-    new_skeleton_coords = filter_outliers(skeleton_coords, mean, std_dev)
-    new_skeleton_coords_array = np.array(new_skeleton_coords)
-    coef = np.polyfit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1], 3)
-    print(coef)
-
-    # skeleton_coords = find_middle_lane_rowwise(path_seg[:,:,0]) 
-    for x, y in new_skeleton_coords:
-        cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 1)
-
-    # for x in range(np.min(new_skeleton_coords_array[:, 0]), np.max(new_skeleton_coords_array[:, 0])):
-    #     y = int(fit_polynomials_scalar(x, coef))
-    #     cv2.circle(seg_copy, (x, y), 1, (255, 0, 0), 1)
-        
-    # params, x_normalized, x_min, x_max = sin_cos_composition_fit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1])
+    left_mark_coords, right_mark_coords = classification_by_gradients(path_seg[:,:,0])
     
-    # y_fit = sin_cos_composition_func(x_normalized, *params).astype(np.uint8)
-    # x_restore = denorm_x(x_normalized, x_min, x_max).astype(np.uint8)
+    
+    # radius = calculate_kernel_radius(path_seg[:,:,0])
+    # print(radius)
+    seg_copy = np.copy(path_seg)
+    blank_paint = np.zeros_like(seg_copy, dtype=np.uint8)
+    for y, x in right_mark_coords:
+        cv2.circle(blank_paint, (x, y), 1, (255, 255, 255), 1)
+    # path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
+
+    # skeleton_coords = thinning_method(path_seg[:,:,0])
+    # mean, std_dev = mean_std_dev(skeleton_coords)
+    # new_skeleton_coords = filter_outliers(skeleton_coords, mean, std_dev)
+    # new_skeleton_coords_array = np.array(new_skeleton_coords)
+    # coef = np.polyfit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1], 3)
+    # print(coef)
+
+    # # skeleton_coords = find_middle_lane_rowwise(path_seg[:,:,0]) 
+    # for x, y in new_skeleton_coords:
+    #     cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 1)
+
+    # # for x in range(np.min(new_skeleton_coords_array[:, 0]), np.max(new_skeleton_coords_array[:, 0])):
+    # #     y = int(fit_polynomials_scalar(x, coef))
+    # #     cv2.circle(seg_copy, (x, y), 1, (255, 0, 0), 1)
+        
+    # # params, x_normalized, x_min, x_max = sin_cos_composition_fit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1])
+    
+    # # y_fit = sin_cos_composition_func(x_normalized, *params).astype(np.uint8)
+    # # x_restore = denorm_x(x_normalized, x_min, x_max).astype(np.uint8)
 
 
-    # for i, j in zip(x_restore, y_fit):
-    #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
+    # # for i, j in zip(x_restore, y_fit):
+    # #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
 
-    show_pic(seg_copy)
+    show_pic(blank_paint)
     import gc
     gc.collect()
 

@@ -82,23 +82,44 @@ namespace clc {
     img &= ~marker;
   }
 
-  void thinning(const cv::Mat& src, cv::Mat dst, int method) {
-    cv::Mat processed = src.clone();
-    CV_CheckTypeEQ(processed.type(), CV_8UC1, "");
+  // void thinning(const cv::Mat& src, cv::Mat dst, int method) {
+  //   cv::Mat processed = src.clone();
+  //   CV_CheckTypeEQ(processed.type(), CV_8UC1, "");
 
+  //   processed /= 255;
+
+  //   cv::Mat prev, diff;
+  //   prev = cv::Mat::zeros(processed.size(), CV_8UC1);
+
+  //   do {
+  //     thinning_iteration(processed, 0, method);
+  //     thinning_iteration(processed, 1, method);
+  //     cv::absdiff(processed, prev, diff);
+  //     processed.copyTo(prev);
+  //   } while (cv::countNonZero(diff) > 0);
+
+  //   processed *= 255;
+  //   dst = std::move(processed);
+  // }
+  void thinning(cv::InputArray input,cv::OutputArray output, int thinningType){
+    cv::Mat processed = input.getMat().clone();
+    CV_CheckTypeEQ(processed.type(), CV_8UC1, "");
+    // Enforce the range of the input image to be in between 0 - 255
     processed /= 255;
 
-    cv::Mat prev, diff;
-    prev = cv::Mat::zeros(processed.size(), CV_8UC1);
+    cv::Mat prev =cv:: Mat::zeros(processed.size(), CV_8UC1);
+    cv::Mat diff;
 
     do {
-      thinning_iteration(processed, 0, method);
-      thinning_iteration(processed, 1, method);
-      cv::absdiff(processed, prev, diff);
-      processed.copyTo(prev);
-    } while (cv::countNonZero(diff) > 0);
+        thinning_iteration(processed, 0, thinningType);
+        thinning_iteration(processed, 1, thinningType);
+        absdiff(processed, prev, diff);
+        processed.copyTo(prev);
+    }
+    while (countNonZero(diff) > 0);
 
     processed *= 255;
-    dst = std::move(processed);
-  }
+
+    output.assign(processed);
+}
 } // namespace clc
