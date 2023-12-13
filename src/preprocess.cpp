@@ -40,8 +40,7 @@ namespace clc {
     cv::bitwise_or(gx_left_shift, gx_right_shift, gx);
     cv::bitwise_or(gy_up_shift, gy_down_shift, gy);
 
-    cv::bitwise_or(gx(cv::Rect(1, 0, gx.cols - 1, gx.rows - 1)),
-                   gy(cv::Rect(0, 1, gx.cols - 1, gx.rows - 1)), grads);
+    cv::bitwise_or(gx.rowRange(1, gx.rows), gy.colRange(1, gy.cols), grads);
 
     int kernel_size = 3;
     cv::Mat kernel = cv::Mat::ones(kernel_size, kernel_size, CV_8U);

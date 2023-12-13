@@ -15,8 +15,24 @@
 */
 
 #include <iostream>
+#include "src/x_axis_searching.h"
 
 int main() {
-    std::cout << "hello world!" << std::endl;
+    std::string img_path = "/home/william/Codes/center-lane-calculation/output/sam_footpath_1702370792.414842.jpg";
+    cv::Mat path_seg = cv::imread(img_path);
+    cv::Mat seg_copy = path_seg.clone();
+    int h = path_seg.rows;
+    int w = path_seg.cols;
+    std::vector<cv::Mat> channels;
+    cv::split(path_seg, channels);
+
+    auto skeleton_coords = clc::search_x_axis(channels[0]);
+    for (auto& p : skeleton_coords) {
+      cv::circle(seg_copy, p, 1, cv::Scalar(255, 192, 203), 2);
+    }
+
+    cv::imshow("middle lane", seg_copy);
+    cv::waitKey(0);
+    cv::destroyAllWindows();
     return 0;
 }

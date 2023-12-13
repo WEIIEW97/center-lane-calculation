@@ -10,46 +10,26 @@ import os
 import numpy as np
 from sklearn.cluster import DBSCAN
 from scipy import optimize
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, CubicSpline
+from scipy.signal import convolve2d
 import glob
 import re
 from typing import List, Tuple
 
-
-# rootdir = "/home/william/extdisk/Data/cybathlon/cppresult/"
-# img_path = "000127_mask.jpg" # 145 or 127
-# index = img_path[:6]
-# path_seg  = cv2.imread(os.path.join(rootdir, img_path))
-# path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
-# # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
-# gx_right_shift = path_seg[:, 1:] - path_seg[:, :-1]
-# gx_left_shift = path_seg[:, :-1] - path_seg[:, 1:]
-# gy_down_shift = path_seg[1:, :] - path_seg[:-1, :]
-# gy_up_shift = path_seg[:-1, :] - path_seg[1:, :]
-
-# gx = cv2.bitwise_or(gx_left_shift, gx_right_shift)
-# gy = cv2.bitwise_or(gy_up_shift, gy_down_shift)
-
-# grads = cv2.bitwise_or(gx[1:, :], gy[:, 1:])
-
-# kernel_size = 3
-# kernel = np.ones((kernel_size, kernel_size), np.uint8)
-# grads_erode = cv2.erode(grads, kernel, iterations=1)
-
-# if (len(grads_erode.shape)) == 3:
-#     H, W, _ = grads_erode.shape
-# else:
-#     H, W = grads_erode.shape
-
-
-# thr = 250
-# valid_points = np.where(grads_erode[:,:,0] > thr)
-# coordinates = list(zip(valid_points[0], valid_points[1]))
-
-# print("tan(1) = ", np.tan(np.deg2rad(1)))
-
 def gaussian_blur(img, kernel_size=[3, 3]):
     return cv2.GaussianBlur(img, kernel_size, cv2.BORDER_DEFAULT)
+
+def calculate_kernel_radius(binary_mask, thr=255):
+    # m = np.where(binary_mask == thr)
+    m = binary_mask == thr
+    m = m.astype(np.uint8)
+    rowsum = np.sum(m, axis=1)
+    filter_out_idx = np.where(rowsum > 0)
+    chosen_row = rowsum[filter_out_idx]
+    mean_val = np.mean(chosen_row)
+    radius = int(mean_val / 4)
+    return radius - 1 if radius % 2 == 0 else radius
+
 
 def extract_boundary_line(binary_mask, thr=250):
     gx_right_shift = binary_mask[:, 1:] - binary_mask[:, :-1]
@@ -159,8 +139,6 @@ def scanline_threshold_selection(coordinates:List[np.array], tolerance=10):
         x_distance_array = x_distance_array[selected]
     return x_distance_array
 
-
-
 def find_middle_lane_rowwise(mask):
     if len(mask.shape) == 3:
         h, w, _ = mask.shape
@@ -177,7 +155,7 @@ def find_middle_lane_rowwise(mask):
     middle_lane_coords = []
     for i in range(len(middle_lane)):
         if middle_lane[i] != 0:
-            middle_lane_coords.append((i, middle_lane[i]))
+            middle_lane_coords.append((middle_lane[i], i))
 
     return middle_lane_coords
 
@@ -232,31 +210,6 @@ def radius_check(coordinates, central_point):
             left_sparse_boundary_points.append((key, max_x_point))
             right_sparse_boundary_points.append((key, min_x_point))
     return left_sparse_boundary_points, right_sparse_boundary_points
-
-
-# cur_idx = 0
-# grads_erode = grads_erode[:, :, 0]
-# for i in range(H):
-#     cur_x = np.where(grads_erode[i, :] == 255)[0]
-#     if cur_x.size > 0:
-#         valid_points = (i, cur_x[0])
-#         coord.append(valid_points)
-#         if len(tan_theta_valid_info) > 0:
-#             gy = valid_points[0] - coord[cur_idx - 1][0]
-#             gx = valid_points[1] - coord[cur_idx - 1][1]
-#             if np.abs(gx) < 1e-6:
-#                 tan_theta = np.inf
-#             else:
-#                 tan_theta = gy / gx
-#             tan_theta_valid_info.append(tan_theta)
-#             coord_and_grad.append((valid_points, tan_theta))     
-#         else:
-#             tan_theta_valid_info.append(0)
-#             coord_and_grad.append((valid_points, 0))
-#         cur_idx += 1
-
-# print(tan_theta_valid_info)
-            
 
 def apply_dbscan_to_column(column, eps=2, min_samples=2):
     """ Apply DBSCAN clustering to a single column """
@@ -403,7 +356,7 @@ def rotation_method(path_seg:np.array):
 
     return seg_copy
 
-def thining_method(binary_mask, method="zhang"):
+def thinning_method(binary_mask, method="zhang"):
     if len(binary_mask.shape) == 3:
         binary_mask = binary_mask[:,:,0]
     if method == "guo":
@@ -411,16 +364,51 @@ def thining_method(binary_mask, method="zhang"):
     elif method == "zhang":
         method_ = cv2.ximgproc.THINNING_ZHANGSUEN
     else:
-        raise NameError(f"{method} is not implemented. Please choose `guo` | `zhang` instead.")
+        raise ValueError(f"{method} is not implemented. Please choose `guo` | `zhang` instead.")
 
     skeleton = cv2.ximgproc.thinning(binary_mask, thinningType=method_)
-    c, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_TC89_KCOS)
+    c, _ = cv2.findContours(skeleton, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     points = None
     if len(c) != 0:
         points = c[0]
         points = points.squeeze(1)
     return points
 
+def mean_std_dev(points):
+    points_array = np.array(points)
+    mean = np.mean(points_array, axis=0)
+    std_dev = np.std(points_array, axis=0)
+    return mean, std_dev
+
+def filter_outliers(points, mean, std_dev, threshold=2.0):
+    # Convert to numpy array for easier manipulation
+    points_array = np.array(points)
+    # Calculate Z-scores
+    z_scores = np.abs((points_array - mean) / std_dev)
+    # Filter out points where the z-score is below the threshold
+    filtered_indices = np.all(z_scores < threshold, axis=1)
+    filtered_points = points_array[filtered_indices]
+    return list(map(tuple, filtered_points))
+
+def sin_cos_composition_func(x, A1, B1, C1, A2, B2, C2, D):
+    return A1 * np.sin(B1 * x + C1) + A2 * np.cos(B2 * x + C2) + D
+
+def norm_x(x, x_min, x_max):
+    x_normalized = 2 * np.pi * (x - x_min) / (x_max - x_min)
+    return x_normalized
+
+def denorm_x(x_normalized, x_min, x_max):
+    return x_min + (x_max - x_min) * x_normalized / (2 * np.pi)
+
+def sin_cos_composition_fit(x, y):
+    x_min = np.min(x)
+    x_max = np.max(x)
+
+    x_normalized = norm_x(x, x_min, x_max)
+
+    initial_guess = [3, 2, 0.5, 1.5, 1, 1, 4]
+    params, _ = optimize.curve_fit(sin_cos_composition_func, x_normalized, y, p0=initial_guess)
+    return params, x_normalized, x_min, x_max
 
 if __name__ == "__main__":
     # rootdir = "/home/william/data/cybathlon/cppresult/"
@@ -454,15 +442,37 @@ if __name__ == "__main__":
 
 
     img_path = "output/sam_footpath_1702370792.414842.jpg"
+    # img_path = "data/000127_mask.jpg"
     path_seg = cv2.imread(img_path)
+    radius = calculate_kernel_radius(path_seg[:,:,0])
+    print(radius)
     seg_copy = np.copy(path_seg)
-    h = path_seg.shape[0]
-    w = path_seg.shape[1]
-    # path_seg = cv2.GaussianBlur(path_seg, [3, 3], cv2.BORDER_DEFAULT)
+    path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
 
-    skeleton_coords = find_middle_lane_rowwise(path_seg[:,:,0])
-    for y, x in skeleton_coords:
-        cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 2)
+    skeleton_coords = thinning_method(path_seg[:,:,0])
+    mean, std_dev = mean_std_dev(skeleton_coords)
+    new_skeleton_coords = filter_outliers(skeleton_coords, mean, std_dev)
+    new_skeleton_coords_array = np.array(new_skeleton_coords)
+    coef = np.polyfit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1], 3)
+    print(coef)
+
+    # skeleton_coords = find_middle_lane_rowwise(path_seg[:,:,0]) 
+    for x, y in new_skeleton_coords:
+        cv2.circle(seg_copy, (x, y), 1, (255, 192, 203), 1)
+
+    # for x in range(np.min(new_skeleton_coords_array[:, 0]), np.max(new_skeleton_coords_array[:, 0])):
+    #     y = int(fit_polynomials_scalar(x, coef))
+    #     cv2.circle(seg_copy, (x, y), 1, (255, 0, 0), 1)
+        
+    # params, x_normalized, x_min, x_max = sin_cos_composition_fit(new_skeleton_coords_array[:, 0], new_skeleton_coords_array[:, 1])
+    
+    # y_fit = sin_cos_composition_func(x_normalized, *params).astype(np.uint8)
+    # x_restore = denorm_x(x_normalized, x_min, x_max).astype(np.uint8)
+
+
+    # for i, j in zip(x_restore, y_fit):
+    #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
+
     show_pic(seg_copy)
     import gc
     gc.collect()

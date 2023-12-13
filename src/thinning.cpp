@@ -82,7 +82,7 @@ namespace clc {
     img &= ~marker;
   }
 
-  void thinning(cv::Mat src, cv::Mat dst, int method) {
+  void thinning(const cv::Mat& src, cv::Mat dst, int method) {
     cv::Mat processed = src.clone();
     CV_CheckTypeEQ(processed.type(), CV_8UC1, "");
 

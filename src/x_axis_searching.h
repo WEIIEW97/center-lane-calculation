@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, William Wei.  All rights reserved.
+ * Copyright (c) 2022-2023, William Wei. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef CALCULATE_SKELETON_THINING_H
-#define CALCULATE_SKELETON_THINING_H
+#ifndef CALCULATE_SKELETON_X_AXIS_SEARCHING_H
+#define CALCULATE_SKELETON_X_AXIS_SEARCHING_H
 
-#include <opencv2/opencv.hpp>
-
+#include "common.h"
+#include "opencv2/opencv.hpp"
 namespace clc {
-  enum ThinningType {
-    ZHANGSUEN = 1,
-    GUOHALL = 2,
-  };
+  std::vector<cv::Point2i> search_x_axis(const cv::Mat& binary_mask);
+}
 
-  void thinning(const cv::Mat& src, cv::Mat dst, int method);
-} // namespace clc
-
-#endif // CALCULATE_SKELETON_THINING_H
+#endif // CALCULATE_SKELETON_X_AXIS_SEARCHING_H
