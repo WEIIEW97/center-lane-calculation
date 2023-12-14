@@ -12,6 +12,7 @@ from sklearn.cluster import DBSCAN
 from scipy import optimize
 from scipy.interpolate import interp1d, CubicSpline
 from scipy.signal import convolve2d
+from sklearn import svm
 import glob
 import re
 from typing import List, Tuple
@@ -410,7 +411,7 @@ def sin_cos_composition_fit(x, y):
     params, _ = optimize.curve_fit(sin_cos_composition_func, x_normalized, y, p0=initial_guess)
     return params, x_normalized, x_min, x_max
 
-def classification_by_gradients(binary_mask):
+def classify_by_gradients(binary_mask):
     h, w = binary_mask.shape
     left_mark_sparse_coord = []
     right_mark_sparse_coord = []
@@ -429,6 +430,184 @@ def classification_by_gradients(binary_mask):
                 break  # Optional: remove to find multiple edges per row
 
     return left_mark_sparse_coord, right_mark_sparse_coord
+
+def classify_by_svm(binary_mask):
+    radius = calculate_kernel_radius(binary_mask)
+    gaus = gaussian_blur(binary_mask, [radius, radius])
+    detector = np.ones((1, radius), np.uint8)
+    conv = convolve2d(gaus, detector, 'same', 'symm')
+    filtered_conv = np.zeros_like(conv, dtype=np.uint8)
+    filtered_conv[conv == 255] = 255
+
+    left_mark_sparse_coord = []
+    right_mark_sparse_coord = []
+
+    chosen_indices = np.where(conv == 255)
+    list_chosen_indices = []
+    for i in range(len(chosen_indices[0])):
+        list_chosen_indices.append(np.array([chosen_indices[0][i], chosen_indices[1][i]]))
+    map_indices = construct_map(list_chosen_indices)
+
+    min_y = np.min(chosen_indices[0])
+    max_y = np.max(chosen_indices[0])
+
+    sep = (max_y - min_y) // 10
+    begin_row = min_y
+    horizontal_sum = 0
+    recorder = []
+    count = 0
+    for k in map_indices.keys():
+        if k <= begin_row + sep:
+            horizontal_sum += np.mean(map_indices[k])
+            count += 1
+        else:
+            recorder.append([(begin_row, k-1), horizontal_sum / count])
+            begin_row = k
+            horizontal_sum = 0
+            count = 0
+
+    # put label by this virtual middle points
+    for key, value in map_indices.items():
+        for info in recorder:
+            range_info = info[0]
+            thr = info[1]
+            if key >= range_info[0] and key <= range_info[1]:
+                for v in value:
+                    if v <= thr:
+                        left_mark_sparse_coord.append((key, v))
+                    else:
+                        right_mark_sparse_coord.append((key, v))
+
+    # TODO: do we have better outlier detection algorithm?
+    left_mean, left_std_dev = mean_std_dev(left_mark_sparse_coord)
+    left_mark_sparse_coord = filter_outliers(left_mark_sparse_coord, left_mean, left_std_dev)
+
+    right_mean, right_std_dev = mean_std_dev(right_mark_sparse_coord)
+    right_mark_sparse_coord = filter_outliers(right_mark_sparse_coord, right_mean, right_std_dev)
+
+    data = np.zeros((len(left_mark_sparse_coord) + len(right_mark_sparse_coord), 3))
+    data[0:len(left_mark_sparse_coord), 0:2] = np.array(left_mark_sparse_coord)
+    data[0:len(left_mark_sparse_coord), 2] = 0
+    data[len(left_mark_sparse_coord):, 0:2] = np.array(right_mark_sparse_coord)
+    data[len(left_mark_sparse_coord):, 2] = 1
+
+    X = data[:, 0:2]
+    Y = data[:, 2]
+    print(X)
+    rbf_svc = svm.NuSVC(kernel='rbf', gamma='auto', class_weight='balanced', verbose=False)
+    rbf_svc.fit(X, Y)
+    x_min = X[:,1].min()
+    x_max = X[:,1].max()
+    y_min = X[:,0].min()
+    y_max = X[:,0].max()
+
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 500),
+                     np.linspace(y_min, y_max, 500))
+    Z = rbf_svc.decision_function(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    plt.imshow(
+    Z,
+    interpolation="nearest",
+    extent=(xx.min(), xx.max(), yy.min(), yy.max()),
+    aspect="auto",
+    origin="lower",
+    cmap=plt.cm.PuOr_r,
+    )
+    contours = plt.contour(xx, yy, Z, levels=[0], linewidths=2, linestyles="dashed")
+    plt.scatter(X[:, 1], X[:, 0], s=30, c=Y, cmap=plt.cm.Paired, edgecolors="k")
+    plt.xticks(())
+    plt.yticks(())
+    plt.title('SVM Decision Boundary with RBF Kernel')
+    plt.show()
+
+    return rbf_svc
+
+def abs_sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(0, 255)):
+
+    # Apply the following steps to img
+    # 1) Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # 2) Take the derivative in x or y given orient = 'x' or 'y'
+    # 3) Take the absolute value of the derivative or gradient
+    if orient == 'x':
+        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel))
+    if orient == 'y':
+        abs_sobel = np.absolute(cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel))
+
+    # 4) Scale to 8-bit (0 - 255) then convert to type = np.uint8
+    scaled_sobel = np.uint8(255.*abs_sobel/np.max(abs_sobel))
+
+    # 5) Create a mask of 1's where the scaled gradient magnitude
+    # is > thresh_min and < thresh_max
+    binary_output = np.zeros_like(scaled_sobel)
+    binary_output[(scaled_sobel >= thresh[0]) & (scaled_sobel <= thresh[1])] = 1
+
+    return binary_output
+
+def mag_thresh(img, sobel_kernel=3, thresh=(0, 255)):
+
+    # Apply the following steps to img
+    # 1) Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # 2) Take the gradient in x and y separately
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+
+    # 3) Calculate the magnitude
+    gradmag = np.sqrt(sobelx**2 + sobely**2)
+
+    # 4) Scale to 8-bit (0 - 255) and convert to type = np.uint8
+    scale_factor = np.max(gradmag)/255
+    gradmag = (gradmag/scale_factor).astype(np.uint8)
+
+    # 5) Create a binary mask where mag thresholds are met
+    binary_output = np.zeros_like(gradmag)
+    binary_output[(gradmag >= thresh[0]) & (gradmag <= thresh[1])] = 1
+
+    return binary_output
+
+def dir_threshold(img, sobel_kernel=3, thresh=(0, np.pi/2)):
+    """ threshold according to the direction of the gradient
+
+    :param img:
+    :param sobel_kernel:
+    :param thresh:
+    :return:
+    """
+
+    # Apply the following steps to img
+    # 1) Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+    # 2) Take the gradient in x and y separately
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=sobel_kernel)
+
+    # 3) Take the absolute value of the x and y gradients
+    # 4) Use np.arctan2(abs_sobely, abs_sobelx) to calculate the direction of the gradient
+    absgraddir = np.arctan2(np.absolute(sobely), np.absolute(sobelx))
+
+    # 5) Create a binary mask where direction thresholds are met
+    binary_output =  np.zeros_like(absgraddir)
+    binary_output[(absgraddir >= thresh[0]) & (absgraddir <= thresh[1])] = 1
+
+    return binary_output
+
+def gradient_pipeline(image, ksize = 3, sx_thresh=(20, 100), sy_thresh=(20, 100), m_thresh=(30, 100), dir_thresh=(0.7, 1.3)):
+
+    # Apply each of the thresholding functions
+    gradx = abs_sobel_thresh(image, orient='x', sobel_kernel=ksize, thresh=sx_thresh)
+    grady = abs_sobel_thresh(image, orient='y', sobel_kernel=ksize, thresh=sy_thresh)
+    mag_binary = mag_thresh(image, sobel_kernel=ksize, thresh=m_thresh)
+    dir_binary = dir_threshold(image, sobel_kernel=ksize, thresh=dir_thresh)
+    combined = np.zeros_like(mag_binary)
+    combined[((gradx == 1) & (grady == 1)) | ((mag_binary == 1) & (dir_binary == 1))] = 1
+    # combined[(gradx == 1)  | ((mag_binary == 1) & (dir_binary == 1))] = 1
+    return combined
+
 
 
 
@@ -466,15 +645,14 @@ if __name__ == "__main__":
     # img_path = "output/sam_footpath_1702370792.414842.jpg"
     img_path = "data/000145_mask.jpg"
     path_seg = cv2.imread(img_path)
-    left_mark_coords, right_mark_coords = classification_by_gradients(path_seg[:,:,0])
-    
-    
-    # radius = calculate_kernel_radius(path_seg[:,:,0])
-    # print(radius)
-    seg_copy = np.copy(path_seg)
-    blank_paint = np.zeros_like(seg_copy, dtype=np.uint8)
-    for y, x in right_mark_coords:
-        cv2.circle(blank_paint, (x, y), 1, (255, 255, 255), 1)
+    # show_pic(path_seg)
+    clf = classify_by_svm(path_seg[:,:,0])
+    answer = clf.predict(np.array([[449, 177]]))
+    print(answer)
+    # seg_copy = np.copy(path_seg)
+    # blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
+    # for y, x in left_coord:
+    #     cv2.circle(blank_paint, (x, y), 1, (255, 255, 255), 1)
     # path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
 
     # skeleton_coords = thinning_method(path_seg[:,:,0])
@@ -501,7 +679,7 @@ if __name__ == "__main__":
     # # for i, j in zip(x_restore, y_fit):
     # #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
 
-    show_pic(blank_paint)
+    # show_pic(blank_paint)
     import gc
     gc.collect()
 
