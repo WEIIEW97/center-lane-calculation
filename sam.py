@@ -63,44 +63,72 @@ def use_sam_predictor(input_point, input_label, ckpt_path, img, device):
     )
     return masks, scores, logits
 
+def cv_click_event(image):
+    points = []
+    def click_event(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            points.append((x, y))
+    
+    cv2.imshow('image', image)
+    cv2.setMouseCallback('image', click_event)
+    
+
+    while True:
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+    return points
+
+def build_sam_cv_pipeline(image, sam_checkpoint, device="cuda"):
+    points = cv_click_event(image)
+    num_points = len(points)
+    if num_points is not None or num_points != 0:
+        input_points = np.array(points)
+        input_labels = np.ones(num_points, dtype=np.uint8)
+
+        masks, scores, logits = use_sam_predictor(input_points, input_labels, sam_checkpoint, image, device)
+
+        best_score = 0
+        selected_idx = -1
+        for i, (mask, score) in enumerate(zip(masks, scores)):
+            if score > best_score:
+                best_score = score
+                seletced_idx = i
+        seg_mask = masks[selected_idx].astype(np.uint8)
+        seg_mask *= 255
+        return seg_mask
 
 def main():
-    image = cv2.imread('/home/william/extdisk/Data/extract_footpath/image_rgb/1702370792.414842.png')
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
     sam_checkpoint = '/home/william/Downloads/sam_vit_h_4b8939.pth'
     device = "cuda"
 
-    # masks = generate_sam_masks(sam_checkpoint, image, device)
-    # print(len(masks))
-    # print(masks[0].keys())
+    rgb_dir = '/home/william/extdisk/Data/extract_footpath/image_rgb'
+    save_dir = '/home/william/extdisk/Data/extract_footpath/seg_mask'
+    os.makedirs(save_dir, exist_ok=True)
+    all_rgb_files = [f for f in os.listdir(rgb_dir) if os.path.isfile(os.path.join(rgb_root_dir, f))]
 
-    # plt.figure(figsize=(20,20))
-    # plt.imshow(image)
-    # show_anns(masks)
-    # plt.axis('off')
-    # plt.show() 
-
-    # input_points = np.array([[293, 122], [278, 373]])
-    # input_label = np.array([1 ,1])
-
-    input_point = np.array([[323, 353], [338, 283], [372, 207], [300, 159]])
-    input_label = np.array([1, 1, 1, 1])
-    masks, scores, logits = use_sam_predictor(input_point, input_label, sam_checkpoint, image, device)
-
-    # for i, (mask, score) in enumerate(zip(masks, scores)):
-    #     plt.figure(figsize=(10,10))
-    #     plt.imshow(image)
-    #     show_mask(mask, plt.gca())
-    #     show_points(input_point, input_label, plt.gca())
-    #     plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
-    #     plt.axis('off')
-    #     plt.show()  
-    seg_mask = masks[2].astype(np.uint8)
-    seg_mask *= 255
-    cv2.imwrite("output/sam_footpath_1702370792.414842.jpg", seg_mask)
+    for f in all_rgb_files:
+        image = cv2.imread(os.path.join(rgb_dir, f))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        seg_mask = build_sam_cv_pipeline(image, sam_checkpoint, device)
+        if seg_mask is not None:
+            write_name = f"sam_seg_{f}"
+            cv2.imwrite(os.path.join(save_dir, write_name), seg_mask)
     
+    print("done!")
 
+def test():
+    image = cv2.imread('/home/william/extdisk/Data/extract_footpath/image_rgb/1702370798.032749.png')
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    sam_checkpoint = '/home/william/Downloads/sam_vit_h_4b8939.pth'
+    device = "cuda"
+
+    seg_mask = build_sam_cv_pipeline(image, sam_checkpoint, device)
+    cv2.imshow("highest score segmentation", seg_mask)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    main()
+    # main()
+    test()
