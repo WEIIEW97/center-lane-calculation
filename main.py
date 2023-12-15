@@ -431,7 +431,23 @@ def classify_by_gradients(binary_mask):
 
     return left_mark_sparse_coord, right_mark_sparse_coord
 
-def classify_by_svm(binary_mask):
+def transform_coordinates_rot90_clockwise(coordinates_t, origianl_w, return_type=None):
+    """coordinates are in [y, x] format
+    """
+    coordinates_t_array = np.array(coordinates_t)
+    coords_t_restore = np.copy(coordinates_t_array)
+    coords_t_restore[:, 1] = origianl_w - coordinates_t_array[:, 0]
+    coords_t_restore[:, 0] = coordinates_t_array[:, 1]
+    if return_type is None:
+        return coords_t_restore
+
+    elif return_type == "list":
+        return list(coords_t_restore)
+    
+    else:
+        raise ValueError(f"Unsupported return type: {return_type}")
+
+def get_left_and_right_sparse_coordinates(binary_mask, is_filtering:bool=False):
     radius = calculate_kernel_radius(binary_mask)
     gaus = gaussian_blur(binary_mask, [radius, radius])
     detector = np.ones((1, radius), np.uint8)
@@ -479,11 +495,17 @@ def classify_by_svm(binary_mask):
                         right_mark_sparse_coord.append((key, v))
 
     # TODO: do we have better outlier detection algorithm?
-    left_mean, left_std_dev = mean_std_dev(left_mark_sparse_coord)
-    left_mark_sparse_coord = filter_outliers(left_mark_sparse_coord, left_mean, left_std_dev)
+    if is_filtering:
+        left_mean, left_std_dev = mean_std_dev(left_mark_sparse_coord)
+        left_mark_sparse_coord = filter_outliers(left_mark_sparse_coord, left_mean, left_std_dev)
 
-    right_mean, right_std_dev = mean_std_dev(right_mark_sparse_coord)
-    right_mark_sparse_coord = filter_outliers(right_mark_sparse_coord, right_mean, right_std_dev)
+        right_mean, right_std_dev = mean_std_dev(right_mark_sparse_coord)
+        right_mark_sparse_coord = filter_outliers(right_mark_sparse_coord, right_mean, right_std_dev)
+
+    return left_mark_sparse_coord, right_mark_sparse_coord
+
+def classify_by_svm(binary_mask, show_plot:False):
+    left_mark_sparse_coord, right_mark_sparse_coord = get_left_and_right_sparse_coordinates(binary_mask)
 
     data = np.zeros((len(left_mark_sparse_coord) + len(right_mark_sparse_coord), 3))
     data[0:len(left_mark_sparse_coord), 0:2] = np.array(left_mark_sparse_coord)
@@ -493,35 +515,36 @@ def classify_by_svm(binary_mask):
 
     X = data[:, 0:2]
     Y = data[:, 2]
-    print(X)
-    rbf_svc = svm.NuSVC(kernel='rbf', gamma='auto', class_weight='balanced', verbose=False)
-    rbf_svc.fit(X, Y)
-    x_min = X[:,1].min()
-    x_max = X[:,1].max()
-    y_min = X[:,0].min()
-    y_max = X[:,0].max()
+    svm_clf = svm.NuSVC(kernel='rbf', gamma='auto', class_weight='balanced', verbose=False)
+    svm_clf.fit(X, Y)
+    
+    
+    if show_plot:
+        x_min = X[:,1].min()
+        x_max = X[:,1].max()
+        y_min = X[:,0].min()
+        y_max = X[:,0].max()
 
-    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 500),
-                     np.linspace(y_min, y_max, 500))
-    Z = rbf_svc.decision_function(np.c_[xx.ravel(), yy.ravel()])
-    Z = Z.reshape(xx.shape)
+        xx, yy = np.meshgrid(np.linspace(x_min, x_max, 500),
+                        np.linspace(y_min, y_max, 500))
+        Z = svm_clf.decision_function(np.c_[xx.ravel(), yy.ravel()])
+        Z = Z.reshape(xx.shape)
+        plt.imshow(
+        Z,
+        interpolation="nearest",
+        extent=(xx.min(), xx.max(), yy.min(), yy.max()),
+        aspect="auto",
+        origin="lower",
+        cmap=plt.cm.PuOr_r,
+        )
+        contours = plt.contour(xx, yy, Z, levels=[0], linewidths=2, linestyles="dashed")
+        plt.scatter(X[:, 1], X[:, 0], s=30, c=Y, cmap=plt.cm.Paired, edgecolors="k")
+        plt.xticks(())
+        plt.yticks(())
+        plt.title('SVM Decision Boundary with RBF Kernel')
+        plt.show()
 
-    plt.imshow(
-    Z,
-    interpolation="nearest",
-    extent=(xx.min(), xx.max(), yy.min(), yy.max()),
-    aspect="auto",
-    origin="lower",
-    cmap=plt.cm.PuOr_r,
-    )
-    contours = plt.contour(xx, yy, Z, levels=[0], linewidths=2, linestyles="dashed")
-    plt.scatter(X[:, 1], X[:, 0], s=30, c=Y, cmap=plt.cm.Paired, edgecolors="k")
-    plt.xticks(())
-    plt.yticks(())
-    plt.title('SVM Decision Boundary with RBF Kernel')
-    plt.show()
-
-    return rbf_svc
+    return svm_clf
 
 def abs_sobel_thresh(img, orient='x', sobel_kernel=3, thresh=(0, 255)):
 
@@ -642,17 +665,22 @@ if __name__ == "__main__":
 
 
 
-    # img_path = "output/sam_footpath_1702370792.414842.jpg"
-    img_path = "data/000145_mask.jpg"
+    img_path = "output/sam_footpath_1702370792.414842.jpg"
+    # img_path = "data/000145_mask.jpg"
+    # img_path = "data/000145_mask.jpg"
     path_seg = cv2.imread(img_path)
     # show_pic(path_seg)
-    clf = classify_by_svm(path_seg[:,:,0])
-    answer = clf.predict(np.array([[449, 177]]))
-    print(answer)
+    # left_coords, right_coords = get_left_and_right_sparse_coordinates(path_seg[:,:,0])
+    path_seg_t = cv2.rotate(path_seg, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    left_coords_t, right_coords_t = get_left_and_right_sparse_coordinates(path_seg_t[:,:,0])
+    left_coords = transform_coordinates_rot90_clockwise(left_coords_t, path_seg_t.shape[0], "list")
+    right_coords = transform_coordinates_rot90_clockwise(right_coords_t, path_seg_t.shape[0], "list")
     # seg_copy = np.copy(path_seg)
-    # blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
-    # for y, x in left_coord:
-    #     cv2.circle(blank_paint, (x, y), 1, (255, 255, 255), 1)
+    blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
+    for y, x in left_coords:
+        cv2.circle(blank_paint, (x, y), 1, (255, 0, 0), 1)
+    for y, x in right_coords:
+        cv2.circle(blank_paint, (x, y), 1, (0, 0, 255), 1)
     # path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
 
     # skeleton_coords = thinning_method(path_seg[:,:,0])
@@ -679,7 +707,7 @@ if __name__ == "__main__":
     # # for i, j in zip(x_restore, y_fit):
     # #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
 
-    # show_pic(blank_paint)
+    show_pic(blank_paint)
     import gc
     gc.collect()
 
