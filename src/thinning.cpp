@@ -101,25 +101,26 @@ namespace clc {
   //   processed *= 255;
   //   dst = std::move(processed);
   // }
-  void thinning(cv::InputArray input,cv::OutputArray output, int thinningType){
+
+  void thinning(cv::InputArray input, cv::OutputArray output,
+                int thinningType) {
     cv::Mat processed = input.getMat().clone();
     CV_CheckTypeEQ(processed.type(), CV_8UC1, "");
     // Enforce the range of the input image to be in between 0 - 255
     processed /= 255;
 
-    cv::Mat prev =cv:: Mat::zeros(processed.size(), CV_8UC1);
+    cv::Mat prev = cv::Mat::zeros(processed.size(), CV_8UC1);
     cv::Mat diff;
 
     do {
-        thinning_iteration(processed, 0, thinningType);
-        thinning_iteration(processed, 1, thinningType);
-        absdiff(processed, prev, diff);
-        processed.copyTo(prev);
-    }
-    while (countNonZero(diff) > 0);
+      thinning_iteration(processed, 0, thinningType);
+      thinning_iteration(processed, 1, thinningType);
+      absdiff(processed, prev, diff);
+      processed.copyTo(prev);
+    } while (countNonZero(diff) > 0);
 
     processed *= 255;
 
     output.assign(processed);
-}
+  }
 } // namespace clc

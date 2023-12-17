@@ -15,7 +15,7 @@
 */
 
 #include <iostream>
-#include "src/x_axis_searching.h"
+#include "src/methods.h"
 
 int main() {
     std::string img_path = "/home/william/Codes/center-lane-calculation/output/sam_footpath_1702370792.414842.jpg";
@@ -26,7 +26,7 @@ int main() {
     std::vector<cv::Mat> channels;
     cv::split(path_seg, channels);
 
-    auto skeleton_coords = clc::search_x_axis(channels[0]);
+    auto skeleton_coords = clc::row_searching_method(channels[0]);
     for (auto& p : skeleton_coords) {
       cv::circle(seg_copy, p, 1, cv::Scalar(255, 192, 203), 2);
     }

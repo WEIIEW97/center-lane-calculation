@@ -25,7 +25,7 @@ namespace clc {
     GUOHALL = 2,
   };
 
-  void thinning(const cv::Mat& src, cv::Mat dst, int method);
+  void thinning(cv::InputArray input, cv::OutputArray output, int thinningType);
 } // namespace clc
 
 #endif // CALCULATE_SKELETON_THINING_H

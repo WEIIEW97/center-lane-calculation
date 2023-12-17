@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, William Wei. All rights reserved.
+ * Copyright (c) 2023--present, WILLIAM WEI.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,10 +13,34 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "x_axis_searching.h"
+#include "methods.h"
+#include <opencv2/ximgproc.hpp>
+#include <stdexcept>
 
 namespace clc {
-  std::vector<cv::Point2i> search_x_axis(const cv::Mat& binary_mask) {
+  std::vector<std::vector<cv::Point2i>>
+  thinning_method(const cv::Mat& binary_mask, const std::string& method) {
+    int method_;
+    if (method == "guo") {
+      method_ = cv::ximgproc::THINNING_GUOHALL;
+    } else if (method == "zhang") {
+      method_ = cv::ximgproc::THINNING_ZHANGSUEN;
+    } else {
+      throw std::invalid_argument(
+          method +
+          " is not implemented. Please choose `guo` | `zhang` instead.");
+    }
+
+    cv::Mat skeleton;
+    cv::ximgproc::thinning(binary_mask, skeleton, method_);
+
+    std::vector<std::vector<cv::Point>> contour;
+    cv::findContours(skeleton, contour, cv::RETR_EXTERNAL,
+                     cv::CHAIN_APPROX_SIMPLE);
+    return contour;
+  }
+
+  std::vector<cv::Point> row_searching_method(const cv::Mat& binary_mask) {
     std::vector<cv::Point2i> middel_lane_coords;
     int h = binary_mask.rows;
     int w = binary_mask.cols;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023, William Wei. All rights reserved.
+ * Copyright (c) 2023--present, WILLIAM WEI.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 
-#ifndef CALCULATE_SKELETON_X_AXIS_SEARCHING_H
-#define CALCULATE_SKELETON_X_AXIS_SEARCHING_H
+#ifndef CALCULATE_SKELETON_METHODS_H
+#define CALCULATE_SKELETON_METHODS_H
 
-#include "common.h"
 #include "opencv2/opencv.hpp"
+#include "common.h"
+
 namespace clc {
-  std::vector<cv::Point2i> search_x_axis(const cv::Mat& binary_mask);
+  std::vector<std::vector<cv::Point2i>>
+  thinning_method(const cv::Mat& binary_mask, const std::string& method);
+  std::vector<cv::Point> row_searching_method(const cv::Mat& binary_mask);
 }
 
-#endif // CALCULATE_SKELETON_X_AXIS_SEARCHING_H
+#endif // CALCULATE_SKELETON_METHODS_H
