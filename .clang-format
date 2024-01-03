@@ -10,3 +10,4 @@ NamespaceIndentation: All
 BraceWrapping:
   AfterNamespace: true
 FixNamespaceComments: true
+UseTab: Never

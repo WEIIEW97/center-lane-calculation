@@ -1,8 +1,8 @@
 import cv2
 import os
 import sys
-if sys.platform == "linux":
-    os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
+# if sys.platform == "linux":
+#     os.environ.pop("QT_QPA_PLATFORM_PLUGIN_PATH")
 from skimage.morphology import skeletonize, medial_axis
 from skimage.measure import find_contours
 import matplotlib.pyplot as plt
@@ -632,9 +632,24 @@ def gradient_pipeline(image, ksize = 3, sx_thresh=(20, 100), sy_thresh=(20, 100)
     return combined
 
 
-
-
 if __name__ == "__main__":
+    test_img = "/home/william/extdisk/data/cybathlon/footpath_bag_data/ai_seg_0102/1703138025.638516_result.jpg"
+    img = cv2.imread(test_img)
+    kernel = np.ones((11, 11), np.uint8)
+    eroded = cv2.erode(img, kernel, iterations=1)
+    dilated = cv2.dilate(eroded, kernel, iterations=1)
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 1.5)
+    thr = 127
+    res = cv2.threshold(blur, thr, 255, cv2.THRESH_BINARY)
+
+
+    cv2.imshow("original", img)
+    cv2.imshow("gaussian", res[1])
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    
     # rootdir = "/home/william/data/cybathlon/cppresult/"
 
     # all_filenames = get_filenames(rootdir, "mask")
@@ -665,22 +680,22 @@ if __name__ == "__main__":
 
 
 
-    img_path = "output/sam_footpath_1702370792.414842.jpg"
-    # img_path = "data/000145_mask.jpg"
-    # img_path = "data/000145_mask.jpg"
-    path_seg = cv2.imread(img_path)
-    # show_pic(path_seg)
-    # left_coords, right_coords = get_left_and_right_sparse_coordinates(path_seg[:,:,0])
-    path_seg_t = cv2.rotate(path_seg, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    left_coords_t, right_coords_t = get_left_and_right_sparse_coordinates(path_seg_t[:,:,0])
-    left_coords = transform_coordinates_rot90_clockwise(left_coords_t, path_seg_t.shape[0], "list")
-    right_coords = transform_coordinates_rot90_clockwise(right_coords_t, path_seg_t.shape[0], "list")
-    # seg_copy = np.copy(path_seg)
-    blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
-    for y, x in left_coords:
-        cv2.circle(blank_paint, (x, y), 1, (255, 0, 0), 1)
-    for y, x in right_coords:
-        cv2.circle(blank_paint, (x, y), 1, (0, 0, 255), 1)
+    # img_path = "output/sam_footpath_1702370792.414842.jpg"
+    # # img_path = "data/000145_mask.jpg"
+    # # img_path = "data/000145_mask.jpg"
+    # path_seg = cv2.imread(img_path)
+    # # show_pic(path_seg)
+    # # left_coords, right_coords = get_left_and_right_sparse_coordinates(path_seg[:,:,0])
+    # path_seg_t = cv2.rotate(path_seg, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    # left_coords_t, right_coords_t = get_left_and_right_sparse_coordinates(path_seg_t[:,:,0])
+    # left_coords = transform_coordinates_rot90_clockwise(left_coords_t, path_seg_t.shape[0], "list")
+    # right_coords = transform_coordinates_rot90_clockwise(right_coords_t, path_seg_t.shape[0], "list")
+    # # seg_copy = np.copy(path_seg)
+    # blank_paint = np.zeros_like(path_seg, dtype=np.uint8)
+    # for y, x in left_coords:
+    #     cv2.circle(blank_paint, (x, y), 1, (255, 0, 0), 1)
+    # for y, x in right_coords:
+    #     cv2.circle(blank_paint, (x, y), 1, (0, 0, 255), 1)
     # path_seg = cv2.GaussianBlur(path_seg, [radius, radius], cv2.BORDER_DEFAULT)
 
     # skeleton_coords = thinning_method(path_seg[:,:,0])
@@ -707,8 +722,5 @@ if __name__ == "__main__":
     # # for i, j in zip(x_restore, y_fit):
     # #     cv2.circle(seg_copy, (i, j), 1, (0, 0, 255), 1)
 
-    show_pic(blank_paint)
-    import gc
-    gc.collect()
 
 

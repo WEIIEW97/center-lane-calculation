@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 #include "methods.h"
+#include <numeric>
 #include <opencv2/ximgproc.hpp>
 #include <stdexcept>
+#include <omp.h>
 
 namespace clc {
   std::vector<std::vector<cv::Point2i>>
@@ -41,10 +43,10 @@ namespace clc {
   }
 
   std::vector<cv::Point> row_searching_method(const cv::Mat& binary_mask) {
-    std::vector<cv::Point2i> middel_lane_coords;
+    std::vector<cv::Point2i> middle_lane_coords;
     int h = binary_mask.rows;
     int w = binary_mask.cols;
-    middel_lane_coords.reserve(h);
+    middle_lane_coords.reserve(h);
 
     for (int i = 0; i < h; ++i) {
       const auto* row = binary_mask.ptr<uchar>(i);
@@ -60,10 +62,42 @@ namespace clc {
 
       if (count > 0) {
         double mean = sum / count;
-        middel_lane_coords.emplace_back(static_cast<int>(mean), i);
+        middle_lane_coords.emplace_back(static_cast<int>(mean), i);
       }
     }
 
-    return middel_lane_coords;
+    return middle_lane_coords;
+  }
+
+  std::vector<cv::Point>
+  row_searching_reduce_method(const cv::Mat& binary_mask) {
+    std::vector<cv::Point> middle_lane_coords;
+    int h = binary_mask.rows;
+
+    middle_lane_coords.reserve(h);
+
+#pragma omp parallel for
+    for (int i = 0; i < h; i++) {
+      auto row = binary_mask.row(i);
+      auto count = cv::countNonZero(row);
+
+      if (count > 0) {
+        cv::Mat locations;
+        cv::findNonZero(row, locations);
+        double sum = std::accumulate(
+            locations.begin<cv::Point>(), locations.end<cv::Point>(), 0.0,
+            [](double s, const cv::Point& p) { return s + p.x; });
+        double mean = sum / count;
+        middle_lane_coords.emplace_back(static_cast<int>(mean), i);
+      }
+    }
+    return middle_lane_coords;
+  }
+
+  std::vector<cv::Point2f>
+  spline_fitting(const std::vector<cv::Point>& points) {
+    std::vector<cv::Point2f> curve;
+    cv::approxPolyDP(points, curve, 1, false);
+    return curve;
   }
 } // namespace clc

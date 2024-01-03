@@ -24,6 +24,9 @@ namespace clc {
   std::vector<std::vector<cv::Point2i>>
   thinning_method(const cv::Mat& binary_mask, const std::string& method);
   std::vector<cv::Point> row_searching_method(const cv::Mat& binary_mask);
-}
+  std::vector<cv::Point>
+  row_searching_reduce_method(const cv::Mat& binary_mask);
+  std::vector<cv::Point2f> spline_fitting(const std::vector<cv::Point>& points);
+} // namespace clc
 
 #endif // CALCULATE_SKELETON_METHODS_H

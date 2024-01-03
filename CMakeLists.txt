@@ -9,9 +9,16 @@ file(GLOB headers ${CMAKE_CURRENT_LIST_DIR}/src/*.h)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(OpenMP)
 
 add_subdirectory(3rdparty/libsvm)
 message(STATUS ${svm_include_dir})
+
+set(mandatory_libs ${OpenCV_LIBS} svm)
+
+if(OpenMP_CXX_FOUND)
+    list(APPEND {mandatory_libs} OpenMP::OpenMP_CXX)
+endif()
 
 add_executable(${PROJECT_NAME} 
         main.cpp
@@ -28,6 +35,5 @@ target_include_directories(
 
 target_link_libraries(
         ${PROJECT_NAME}
-        ${OpenCV_LIBS}
-        svm
+        ${mandatory_libs}
 )
